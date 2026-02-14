@@ -355,14 +355,14 @@ export default function MainLayout({
       value: string;
     }> = [];
 
-    diffParts.forEach((part, partIndex) => {
+    diffParts.forEach((part: any, partIndex: number) => {
       const type = part.added
         ? "added"
         : part.removed
         ? "removed"
         : "unchanged";
       const lines = part.value.split("\n");
-      lines.forEach((line, lineIndex) => {
+      lines.forEach((line: string, lineIndex: number) => {
         if (lineIndex === lines.length - 1 && line === "") return;
         items.push({
           key: `${partIndex}-${lineIndex}`,
