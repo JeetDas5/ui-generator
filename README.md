@@ -35,6 +35,7 @@ Create a `.env.local` file and set your API key:
 OPENROUTER_API_KEY=your_key_here
 OPENROUTER_MODEL=stepfun/step-3.5-flash:free
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
+DATABASE_URL=your-database-url
 ```
 
 Run the development server:
