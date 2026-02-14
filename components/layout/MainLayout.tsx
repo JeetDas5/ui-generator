@@ -12,14 +12,18 @@ import { z } from "zod";
 import { cn } from "@/lib/utils";
 import {
   Send,
-  RotateCcw,
   Code,
   Eye,
   Terminal,
   Sparkles,
   Bot,
   User,
+  History,
+  GitCompare,
+  Undo2,
+  RefreshCw,
 } from "lucide-react";
+import { diffLines } from "diff";
 
 // Define the shape of the AI response on the client side validation
 const aiSchema = z.object({
@@ -34,6 +38,12 @@ const aiSchema = z.object({
   explanation: z.string(),
 });
 
+type VersionMeta = {
+  id: number;
+  createdAt: number;
+  codeExcerpt: string;
+};
+
 export default function MainLayout({
   componentFiles,
 }: {
@@ -44,13 +54,32 @@ export default function MainLayout({
   >([]);
   const [input, setInput] = React.useState("");
   const [activeTab, setActiveTab] = React.useState<
-    "preview" | "code" | "console"
+    "preview" | "code" | "console" | "diff"
   >("preview");
 
   const [generation, setGeneration] = React.useState<z.infer<
     typeof aiSchema
   > | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
+
+  const [versions, setVersions] = React.useState<VersionMeta[]>([]);
+  const [versionCache, setVersionCache] = React.useState<
+    Record<number, string>
+  >({});
+  const [selectedVersionId, setSelectedVersionId] = React.useState<
+    number | null
+  >(null);
+  const [selectedVersionCode, setSelectedVersionCode] = React.useState<
+    string | null
+  >(null);
+  const [activeCodeOverride, setActiveCodeOverride] = React.useState<
+    string | null
+  >(null);
+  const [diffBaseCode, setDiffBaseCode] = React.useState<string | null>(null);
+  const [diffTargetCode, setDiffTargetCode] = React.useState<string | null>(
+    null
+  );
+  const [codeRevision, setCodeRevision] = React.useState(0);
 
   React.useEffect(() => {
     console.log(
@@ -61,8 +90,95 @@ export default function MainLayout({
     );
   }, [componentFiles]);
 
+  const refreshVersions = React.useCallback(async () => {
+    try {
+      const response = await fetch("/api/versions", { cache: "no-store" });
+      const result = await response.json();
+      if (result?.success && Array.isArray(result.data)) {
+        setVersions(result.data as VersionMeta[]);
+      }
+    } catch (error) {
+      console.error("Version refresh error:", error);
+    }
+  }, []);
+
+  const saveVersion = React.useCallback(
+    async (code: string) => {
+      try {
+        const response = await fetch("/api/versions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code }),
+        });
+        const result = await response.json();
+        if (result?.success) {
+          await refreshVersions();
+        }
+      } catch (error) {
+        console.error("Version save error:", error);
+      }
+    },
+    [refreshVersions]
+  );
+
+  const loadVersionCode = React.useCallback(
+    async (id: number) => {
+      if (versionCache[id]) return versionCache[id];
+      try {
+        const response = await fetch(`/api/versions/${id}`, {
+          cache: "no-store",
+        });
+        const result = await response.json();
+        if (result?.success && result.data?.code) {
+          const code = String(result.data.code);
+          setVersionCache((prev) => ({ ...prev, [id]: code }));
+          return code;
+        }
+      } catch (error) {
+        console.error("Version fetch error:", error);
+      }
+      return null;
+    },
+    [versionCache]
+  );
+
+  const handleRestoreVersion = React.useCallback(
+    async (id: number) => {
+      const code = await loadVersionCode(id);
+      if (!code) return;
+      setSelectedVersionId(id);
+      setSelectedVersionCode(code);
+      setActiveCodeOverride(code);
+      setActiveTab("preview");
+    },
+    [loadVersionCode]
+  );
+
+  const handleCompareVersion = React.useCallback(
+    async (id: number) => {
+      const code = await loadVersionCode(id);
+      if (!code) return;
+      setSelectedVersionId(id);
+      setSelectedVersionCode(code);
+      setDiffTargetCode(code);
+      setActiveTab("diff");
+    },
+    [loadVersionCode]
+  );
+
+  React.useEffect(() => {
+    refreshVersions();
+    const interval = setInterval(refreshVersions, 5000);
+    return () => clearInterval(interval);
+  }, [refreshVersions]);
+
   const fixImportsForSandpack = (code: string): string => {
     return code.replace(/@\/components\//g, "./components/");
+  };
+
+  const formatTimestamp = (value: number) => {
+    const date = new Date(value);
+    return date.toLocaleString();
   };
 
   const currentCode = `export default function App() {
@@ -144,6 +260,8 @@ export default function MainLayout({
           }
 
           setGeneration(validated.data);
+          setActiveCodeOverride(null);
+          void saveVersion(validated.data.code);
 
           setMessages((prev) => [
             ...prev,
@@ -207,9 +325,55 @@ export default function MainLayout({
   );
 
   // Determine which code to show
-  const activeCode = generation?.code
+  const activeCode = activeCodeOverride
+    ? fixImportsForSandpack(activeCodeOverride)
+    : generation?.code
     ? fixImportsForSandpack(generation.code)
     : currentCode;
+
+  React.useEffect(() => {
+    setCodeRevision((prev) => prev + 1);
+    setDiffBaseCode(activeCode);
+  }, [activeCode]);
+
+  React.useEffect(() => {
+    if (selectedVersionCode) {
+      setDiffTargetCode(selectedVersionCode);
+    }
+  }, [selectedVersionCode]);
+
+  const diffParts = React.useMemo(() => {
+    if (!diffBaseCode || !diffTargetCode) return [];
+    return diffLines(diffBaseCode, diffTargetCode);
+  }, [diffBaseCode, diffTargetCode]);
+
+  const diffLineItems = React.useMemo(() => {
+    if (!diffParts.length) return [];
+    const items: Array<{
+      key: string;
+      type: "added" | "removed" | "unchanged";
+      value: string;
+    }> = [];
+
+    diffParts.forEach((part, partIndex) => {
+      const type = part.added
+        ? "added"
+        : part.removed
+        ? "removed"
+        : "unchanged";
+      const lines = part.value.split("\n");
+      lines.forEach((line, lineIndex) => {
+        if (lineIndex === lines.length - 1 && line === "") return;
+        items.push({
+          key: `${partIndex}-${lineIndex}`,
+          type,
+          value: line,
+        });
+      });
+    });
+
+    return items;
+  }, [diffParts]);
 
   const files = {
     "/src/App.tsx": activeCode,
@@ -465,112 +629,206 @@ root.render(
       </div>
 
       {/* Right Panel - Workspace */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden bg-zinc-950">
-        <div className="border-b border-border/10 px-4 py-2 flex items-center justify-between bg-zinc-900 text-zinc-400">
-          <div className="flex space-x-1 bg-zinc-800/50 p-1 rounded-lg">
-            <button
-              onClick={() => setActiveTab("preview")}
-              className={cn(
-                "px-3 py-1.5 text-xs font-medium rounded-md flex items-center gap-2 transition-all",
-                activeTab === "preview"
-                  ? "bg-zinc-700 text-white shadow-sm"
-                  : "hover:text-white"
-              )}
-            >
-              <Eye size={12} /> Preview
-            </button>
-            <button
-              onClick={() => setActiveTab("code")}
-              className={cn(
-                "px-3 py-1.5 text-xs font-medium rounded-md flex items-center gap-2 transition-all",
-                activeTab === "code"
-                  ? "bg-zinc-700 text-white shadow-sm"
-                  : "hover:text-white"
-              )}
-            >
-              <Code size={12} /> Code
-            </button>
-            <button
-              onClick={() => setActiveTab("console")}
-              className={cn(
-                "px-3 py-1.5 text-xs font-medium rounded-md flex items-center gap-2 transition-all",
-                activeTab === "console"
-                  ? "bg-zinc-700 text-white shadow-sm"
-                  : "hover:text-white"
-              )}
-            >
-              <Terminal size={12} /> Console
-            </button>
+      <div className="flex-1 flex h-full overflow-hidden bg-zinc-950">
+        <div className="flex-1 flex flex-col h-full overflow-hidden bg-zinc-950">
+          <div className="border-b border-border/10 px-4 py-2 flex items-center justify-between bg-zinc-900 text-zinc-400">
+            <div className="flex space-x-1 bg-zinc-800/50 p-1 rounded-lg">
+              <button
+                onClick={() => setActiveTab("preview")}
+                className={cn(
+                  "px-3 py-1.5 text-xs font-medium rounded-md flex items-center gap-2 transition-all",
+                  activeTab === "preview"
+                    ? "bg-zinc-700 text-white shadow-sm"
+                    : "hover:text-white"
+                )}
+              >
+                <Eye size={12} /> Preview
+              </button>
+              <button
+                onClick={() => setActiveTab("code")}
+                className={cn(
+                  "px-3 py-1.5 text-xs font-medium rounded-md flex items-center gap-2 transition-all",
+                  activeTab === "code"
+                    ? "bg-zinc-700 text-white shadow-sm"
+                    : "hover:text-white"
+                )}
+              >
+                <Code size={12} /> Code
+              </button>
+              <button
+                onClick={() => setActiveTab("console")}
+                className={cn(
+                  "px-3 py-1.5 text-xs font-medium rounded-md flex items-center gap-2 transition-all",
+                  activeTab === "console"
+                    ? "bg-zinc-700 text-white shadow-sm"
+                    : "hover:text-white"
+                )}
+              >
+                <Terminal size={12} /> Console
+              </button>
+              <button
+                onClick={() => setActiveTab("diff")}
+                className={cn(
+                  "px-3 py-1.5 text-xs font-medium rounded-md flex items-center gap-2 transition-all",
+                  activeTab === "diff"
+                    ? "bg-zinc-700 text-white shadow-sm"
+                    : "hover:text-white"
+                )}
+              >
+                <GitCompare size={12} /> Diff
+              </button>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span
+                className={cn(
+                  "w-2 h-2 rounded-full",
+                  isLoading ? "bg-yellow-500 animate-pulse" : "bg-green-500"
+                )}
+              />
+              {isLoading ? "Generating..." : "Ready"}
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-xs">
-            {/* {generation?.plan?.layout && (
-              <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-full border border-primary/20">
-                {generation.plan.layout}
-              </span>
-            )} */}
-            <span
-              className={cn(
-                "w-2 h-2 rounded-full",
-                isLoading ? "bg-yellow-500 animate-pulse" : "bg-green-500"
-              )}
-            />
-            {isLoading ? "Generating..." : "Ready"}
+
+          <div className="flex-1 relative h-full w-full overflow-hidden">
+            <SandpackProvider
+              key={`code-${codeRevision}`}
+              files={files}
+              theme="dark"
+              template="react"
+              options={{
+                externalResources: ["https://cdn.tailwindcss.com"],
+              }}
+            >
+              <SandpackLayout className="h-screen w-full border-none bg-zinc-950 flex! flex-col!">
+                <div
+                  className={cn(
+                    "flex-1 h-full w-full relative overflow-hidden",
+                    activeTab === "preview" ? "flex flex-col" : "hidden"
+                  )}
+                >
+                  <SandpackPreview
+                    className="h-full! w-full! flex-1"
+                    showOpenInCodeSandbox={false}
+                    showRefreshButton={true}
+                  />
+                </div>
+                <div
+                  className={cn(
+                    "flex-1 h-full relative overflow-auto",
+                    activeTab === "code" ? "block" : "hidden"
+                  )}
+                >
+                  <SandpackCodeEditor
+                    className="h-full max-w-screen w-full font-mono"
+                    showTabs
+                    showLineNumbers
+                    readOnly={false} // Allow edits!
+                    showInlineErrors
+                    wrapContent
+                  />
+                </div>
+                <div
+                  className={cn(
+                    "flex-1 h-full relative bg-zinc-950 font-mono",
+                    activeTab === "console" ? "block" : "hidden"
+                  )}
+                >
+                  <SandpackConsole className="h-full w-full" />
+                </div>
+                <div
+                  className={cn(
+                    "flex-1 h-full relative overflow-auto bg-zinc-950 font-mono",
+                    activeTab === "diff" ? "block" : "hidden"
+                  )}
+                >
+                  {diffLineItems.length === 0 ? (
+                    <div className="p-6 text-sm text-muted-foreground">
+                      Select a version from history to compare.
+                    </div>
+                  ) : (
+                    <div className="p-4 text-xs leading-relaxed">
+                      {diffLineItems.map((line) => (
+                        <div
+                          key={line.key}
+                          className={cn(
+                            "whitespace-pre-wrap px-2 py-0.5 rounded",
+                            line.type === "added" &&
+                              "bg-emerald-500/10 text-emerald-200",
+                            line.type === "removed" &&
+                              "bg-rose-500/10 text-rose-200",
+                            line.type === "unchanged" && "text-zinc-300"
+                          )}
+                        >
+                          <span className="mr-2">
+                            {line.type === "added"
+                              ? "+"
+                              : line.type === "removed"
+                              ? "-"
+                              : " "}
+                          </span>
+                          {line.value}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </SandpackLayout>
+            </SandpackProvider>
           </div>
         </div>
 
-        <div className="flex-1 relative h-full w-full overflow-hidden">
-          <SandpackProvider
-            key={
-              generation?.code
-                ? `generated-${generation.code.length}`
-                : "initial"
-            }
-            files={files}
-            theme="dark"
-            template="react"
-            options={{
-              externalResources: ["https://cdn.tailwindcss.com"],
-            }}
-          >
-            <SandpackLayout className="h-screen w-full border-none bg-zinc-950 flex! flex-col!">
-              <div
-                className={cn(
-                  "flex-1 h-full w-full relative overflow-hidden",
-                  activeTab === "preview" ? "flex flex-col" : "hidden"
-                )}
-              >
-                <SandpackPreview
-                  className="h-full! w-full! flex-1"
-                  showOpenInCodeSandbox={false}
-                  showRefreshButton={true}
-                />
-              </div>
-              <div
-                className={cn(
-                  "flex-1 h-full relative overflow-auto",
-                  activeTab === "code" ? "block" : "hidden"
-                )}
-              >
-                <SandpackCodeEditor
-                  className="h-full max-w-screen w-full font-mono"
-                  showTabs
-                  showLineNumbers
-                  readOnly={false} // Allow edits!
-                  showInlineErrors
-                  wrapContent
-                />
-              </div>
-              <div
-                className={cn(
-                  "flex-1 h-full relative bg-zinc-950 font-mono",
-                  activeTab === "console" ? "block" : "hidden"
-                )}
-              >
-                <SandpackConsole className="h-full w-full" />
-              </div>
-            </SandpackLayout>
-          </SandpackProvider>
-        </div>
+        <aside className="w-80 border-l border-border/20 bg-zinc-950/80 backdrop-blur flex flex-col">
+          <div className="px-4 py-3 border-b border-border/10 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
+              <History size={14} /> Version History
+            </div>
+            <button
+              onClick={refreshVersions}
+              className="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800/60"
+              title="Refresh"
+            >
+              <RefreshCw size={14} />
+            </button>
+          </div>
+          <div className="flex-1 overflow-auto p-3 space-y-3">
+            {versions.length === 0 ? (
+              <div className="text-xs text-zinc-500">No versions saved yet.</div>
+            ) : (
+              versions.map((version) => (
+                <div
+                  key={version.id}
+                  className={cn(
+                    "rounded-lg border border-border/20 bg-zinc-900/60 p-3 space-y-2",
+                    selectedVersionId === version.id &&
+                      "border-primary/60 bg-zinc-900"
+                  )}
+                >
+                  <div className="flex items-center justify-between text-xs text-zinc-400">
+                    <span>Version #{version.id}</span>
+                    <span>{formatTimestamp(version.createdAt)}</span>
+                  </div>
+                  <div className="text-[11px] text-zinc-300 max-h-12 overflow-hidden">
+                    {version.codeExcerpt || "(empty)"}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleRestoreVersion(version.id)}
+                      className="flex items-center gap-1 rounded-md border border-border/40 px-2 py-1 text-[11px] text-zinc-200 hover:bg-zinc-800"
+                    >
+                      <Undo2 size={12} /> Restore
+                    </button>
+                    <button
+                      onClick={() => handleCompareVersion(version.id)}
+                      className="flex items-center gap-1 rounded-md border border-border/40 px-2 py-1 text-[11px] text-zinc-200 hover:bg-zinc-800"
+                    >
+                      <GitCompare size={12} /> Compare
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </aside>
       </div>
     </div>
   );
