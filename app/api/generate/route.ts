@@ -49,6 +49,13 @@ RULES:
    - ALWAYS use 'import * as React from "react";' at the top of the file.
    - Tailwind CSS is available. Use 'className' for styling.
    - The root container MUST have specific dimensions, e.g., 'min-h-screen w-full'.
+   - DARK MODE: ALWAYS use dark mode colors by default. Use these Tailwind classes:
+     - Root: 'bg-background text-foreground' (dark background, light text)
+     - Cards: 'bg-card text-card-foreground'
+     - Text: 'text-foreground' or 'text-muted-foreground'
+     - Borders: 'border-border'
+     - DO NOT use 'bg-white', 'bg-gray-100', 'text-black', or 'text-gray-900'
+     - DO use 'bg-background', 'text-foreground', 'bg-card', etc.
    - Do not use arbitrary <img> tags if <Image> is not in registry (use standard img or mock).
    - Icons: Import from "@/components/ui-library/Icons". Example: import { Check } from "@/components/ui-library/Icons"
 

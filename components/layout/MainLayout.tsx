@@ -7,9 +7,7 @@ import {
   SandpackCodeEditor,
   SandpackPreview,
   SandpackConsole,
-  SandpackFileExplorer,
 } from "@codesandbox/sandpack-react";
-import { experimental_useObject as useObject } from "@ai-sdk/react";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
 import {
@@ -88,8 +86,8 @@ export default function MainLayout({
 
   const currentCode = `export default function App() {
     return (
-      <div style={{ height: '100vh', width: '100vw', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', color: '#000' }}>
-        <h1 className="text-4xl font-bold">Hello World</h1>
+      <div className="min-h-screen w-full flex items-center justify-center bg-background text-foreground">
+        <h1 className="text-4xl font-bold text-foreground">Hello World</h1>
       </div>
     )
   }`;
@@ -296,14 +294,15 @@ root.render(
   * {
     border-color: hsl(var(--border));
   }
-  body {
+  html, body, #root {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
+    min-height: 100%;
   }
 }
 `,
     "/public/index.html": `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -311,6 +310,7 @@ root.render(
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
+        darkMode: 'class',
         theme: {
           extend: {
             colors: {
@@ -358,10 +358,12 @@ root.render(
         width: 100%;
         margin: 0;
         padding: 0;
+        background-color: hsl(222.2, 84%, 4.9%);
+        color: hsl(210, 40%, 98%);
       }
     </style>
   </head>
-  <body>
+  <body class="dark">
     <div id="root"></div>
   </body>
 </html>`,
@@ -540,11 +542,11 @@ root.render(
             </button>
           </div>
           <div className="flex items-center gap-2 text-xs">
-            {generation?.plan?.layout && (
+            {/* {generation?.plan?.layout && (
               <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-full border border-primary/20">
                 {generation.plan.layout}
               </span>
-            )}
+            )} */}
             <span
               className={cn(
                 "w-2 h-2 rounded-full",
@@ -555,7 +557,7 @@ root.render(
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-scroll relative">
+        <div className="flex-1 relative h-full w-full overflow-hidden">
           <SandpackProvider
             key={
               generation?.code
@@ -569,27 +571,27 @@ root.render(
               externalResources: ["https://cdn.tailwindcss.com"],
             }}
           >
-            <SandpackLayout className="h-full border-none bg-zinc-950">
+            <SandpackLayout className="h-screen w-full border-none bg-zinc-950 flex! flex-col!">
               <div
                 className={cn(
-                  "flex-1 flex flex-col h-full relative overflow-hidden",
-                  activeTab === "preview" ? "flex" : "hidden"
+                  "flex-1 h-full w-full relative overflow-hidden",
+                  activeTab === "preview" ? "flex flex-col" : "hidden"
                 )}
               >
                 <SandpackPreview
-                  className="flex-1 h-full w-full"
+                  className="h-full! w-full! flex-1"
                   showOpenInCodeSandbox={false}
                   showRefreshButton={true}
                 />
               </div>
               <div
                 className={cn(
-                  "flex-1 h-full relative",
+                  "flex-1 h-full relative overflow-auto",
                   activeTab === "code" ? "block" : "hidden"
                 )}
               >
                 <SandpackCodeEditor
-                  className="h-full font-mono"
+                  className="h-full max-w-screen w-full font-mono"
                   showTabs
                   showLineNumbers
                   readOnly={false} // Allow edits!

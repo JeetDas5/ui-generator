@@ -1,7 +1,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-export function Text({
+export function Typography({
   className,
   children,
   variant = "default",
@@ -23,3 +23,6 @@ export function Text({
     </div>
   );
 }
+
+// Keep Text as alias for backwards compatibility
+export const Text = Typography;
