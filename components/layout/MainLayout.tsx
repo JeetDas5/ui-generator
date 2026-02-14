@@ -47,27 +47,10 @@ export default function MainLayout({
     "preview" | "code" | "console"
   >("preview");
 
-  // State for the generation result
-
-  // State for the generation result
   const [generation, setGeneration] = React.useState<z.infer<
     typeof aiSchema
   > | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
-
-  React.useEffect(() => {
-    console.log(
-      "Generation updated:",
-      generation
-        ? {
-            hasCode: !!generation.code,
-            codeLength: generation.code?.length,
-            hasExplanation: !!generation.explanation,
-            hasPlan: !!generation.plan,
-          }
-        : null
-    );
-  }, [generation]);
 
   React.useEffect(() => {
     console.log(
@@ -78,9 +61,7 @@ export default function MainLayout({
     );
   }, [componentFiles]);
 
-  // Default code with a nice placeholder
   const fixImportsForSandpack = (code: string): string => {
-    // Convert @/components/... to ./components/...
     return code.replace(/@\/components\//g, "./components/");
   };
 
@@ -92,18 +73,6 @@ export default function MainLayout({
     )
   }`;
 
-  React.useEffect(() => {
-    if (currentCode && generation?.code) {
-      console.log(
-        "Generated code (first 300 chars):",
-        generation.code.substring(0, 300)
-      );
-      console.log(
-        "Fixed code (first 300 chars):",
-        currentCode.substring(0, 300)
-      );
-    }
-  }, [currentCode, generation?.code]);
   async function submit(formData: {
     messages: Array<{ role: string; content: string }>;
   }) {
@@ -115,8 +84,6 @@ export default function MainLayout({
       });
 
       const result = await response.json();
-
-      console.log("Response: ", result);
 
       if (result.success) {
         try {
@@ -167,7 +134,6 @@ export default function MainLayout({
           };
 
           const validated = aiSchema.safeParse(normalizeAiData(parsedData));
-          console.log("Validation result:", validated);
           if (!validated.success) {
             console.error("Validation errors:", validated.error);
             throw new Error("Invalid AI response shape");
@@ -177,13 +143,8 @@ export default function MainLayout({
             throw new Error("No code generated");
           }
 
-          console.log(
-            "Setting generation with code length:",
-            validated.data.code.length
-          );
           setGeneration(validated.data);
 
-          // Add assistant message
           setMessages((prev) => [
             ...prev,
             { role: "assistant", content: validated.data.explanation },
@@ -403,11 +364,11 @@ root.render(
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden font-sans text-foreground">
       {/* Left Panel - Chat */}
-      <div className="w-[400px] border-r border-border flex flex-col bg-muted/5">
+      <div className="w-100 border-r border-border flex flex-col bg-muted/5">
         <div className="p-4 border-b border-border bg-background flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-primary" />
           <div>
-            <h1 className="text-md font-bold leading-tight">Antigravity UI</h1>
+            <h1 className="text-md font-bold leading-tight">Ryze UI</h1>
             <p className="text-[10px] text-muted-foreground uppercase tracking-widest">
               Deterministic Agent
             </p>

@@ -2,6 +2,10 @@
 
 Generate React UI layouts from a prompt using a fixed component registry. The app renders a live preview and code editor via Sandpack, and validates model output on both the server and client.
 
+## Live preview
+
+[https://ui-generator-six.vercel.app](https://ui-generator-six.vercel.app/)
+
 ## Features
 
 - Prompt-driven UI generation with a constrained component library
